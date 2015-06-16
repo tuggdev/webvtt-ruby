@@ -4,6 +4,10 @@ module WebVTT
     File.new(file)
   end
 
+  def self.parse(string)
+    Parsed.new(string)
+  end
+
   def self.convert_from_srt(srt_file, output=nil)
     if !::File.exists?(srt_file)
       raise InputError, "SRT file not found"
@@ -24,8 +28,7 @@ module WebVTT
   end
 
   class File
-    attr_reader :header, :path, :filename
-    attr_accessor :cues
+    attr_reader :path, :filename
 
     def initialize(webvtt_file)
       if !::File.exists?(webvtt_file)
@@ -34,11 +37,54 @@ module WebVTT
 
       @path = webvtt_file
       @filename = ::File.basename(@path)
-      @content = ::File.read(webvtt_file).gsub("\r\n", "\n") # normalizing new line character
+      @parsed = Parsed.new(::File.read(webvtt_file))
+    end
+
+    def header
+      @parsed.header
+    end
+
+    def cues
+      @parsed.cues
+    end
+
+    def total_length
+      @parsed.total_length
+    end
+
+    def to_webvtt
+      @parsed.to_webvtt
+    end
+
+    def actual_total_length
+      @parsed.actual_total_length
+    end
+
+    def save(output=nil)
+      output ||= @path.gsub('.srt', '.vtt')
+
+      ::File.open(output, "w") do |f|
+        f.write(to_webvtt)
+      end
+
+      output
+    end
+  end
+
+  class Parsed
+    attr_reader :header, :filename
+    attr_accessor :cues
+
+    def initialize(string)
+      @content = string.gsub("\r\n", "\n") # normalizing new line character
       parse
     end
 
     def to_webvtt
+      @cues.each_with_index do |cue, index|
+        cue.identifier = index + 1
+      end
+
       [@header, @cues.map(&:to_webvtt)].flatten.join("\n\n")
     end
 
@@ -48,15 +94,6 @@ module WebVTT
 
     def actual_total_length
       @cues.last.end_in_sec - @cues.first.start_in_sec
-    end
-
-    def save(output=nil)
-      output ||= @path.gsub(".srt", ".vtt")
-
-      ::File.open(output, "w") do |f|
-        f.write(to_webvtt)
-      end
-      return output
     end
 
     def parse
@@ -120,7 +157,7 @@ module WebVTT
       @end.to_f - @start.to_f
     end
 
-    def offset_by( offset_secs )
+    def offset_by(offset_secs)
       @start += offset_secs
       @end   += offset_secs
     end
